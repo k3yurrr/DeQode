@@ -1,0 +1,14 @@
+# Image Processing
+opencv-python
+pillow
+pyzbar
+
+# Network & Web
+requests
+beautifulsoup4
+python-whois
+dnspython
+
+# Utilities
+python-dotenv
+termcolor
