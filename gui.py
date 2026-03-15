@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
-DeQode GUI — QR Phishing Detector
-A dark-themed desktop GUI with drag-and-drop QR scanning.
-Run: python3 gui.py
+DeQode UI — Reference Edition
+Replicated exactly from the design reference image.
 """
 
 import os
@@ -10,13 +9,15 @@ import sys
 import threading
 from pathlib import Path
 import tkinter as tk
-from tkinter import ttk, filedialog, font as tkfont
+from tkinter import filedialog
+import customtkinter as ctk
+from PIL import Image
 
-# ── Fix import path so modules/ is found ────────────────────────────────────
+# Setup paths
 BASE_DIR = Path(__file__).parent
 sys.path.insert(0, str(BASE_DIR))
 
-# ── Load API key ─────────────────────────────────────────────────────────────
+# Load API Key
 VT_API_KEY = ""
 env_path = BASE_DIR / ".env"
 if env_path.exists():
@@ -28,386 +29,433 @@ if env_path.exists():
 if not VT_API_KEY:
     VT_API_KEY = os.environ.get("VT_API_KEY", "").strip()
 
-from modules.decoder       import decode_qr_from_image
-from modules.network       import resolve_url
+from modules.decoder import decode_qr_from_image
+from modules.network import resolve_url
 from modules.url_inspector import analyze_url
-from modules.reputation    import check_virustotal
+from modules.reputation import check_virustotal
 
-# ── Palette ──────────────────────────────────────────────────────────────────
-BG        = "#0a0e1a"       # deep navy black
-PANEL     = "#111827"       # dark panel
-BORDER    = "#1e2d40"       # subtle border
-ACCENT    = "#00d4ff"       # electric cyan
-ACCENT2   = "#7c3aed"       # purple
-DANGER    = "#ef4444"       # red
-WARNING   = "#f59e0b"       # amber
-SUCCESS   = "#10b981"       # emerald
-TEXT      = "#e2e8f0"       # near-white
-MUTED     = "#64748b"       # slate
-GRID_LINE = "#0f172a"       # darker grid
+# Theme & Colors
+ctk.set_appearance_mode("dark")
+BG_COLOR = "#050505"
+ACCENT_CYAN = "#33ccff"
+SUCCESS_GREEN = "#10b981"
+DANGER_RED = "#ef4444"
+WARNING_ORANGE = "#f59e0b"
+PANEL_BG = "#161616"      # Lighter than main background for contrast
+BORDER_COLOR = "#333333"   # Brighter borders for visibility
+TEXT_GRAY = "#999999"      # Brighter secondary text
 
-FONT_MONO  = ("Courier New", 10)
-FONT_TITLE = ("Courier New", 22, "bold")
-FONT_BODY  = ("Courier New", 10)
-FONT_SMALL = ("Courier New", 9)
-FONT_BIG   = ("Courier New", 13, "bold")
-
-
-def run_scan(image_path, log, verdict_var, status_var, scan_btn):
-    """Run full DeQode scan pipeline in background thread."""
-
-    def out(msg, tag="normal"):
-        log.config(state="normal")
-        log.insert("end", msg + "\n", tag)
-        log.see("end")
-        log.config(state="disabled")
-
-    def set_status(msg):
-        status_var.set(msg)
-
-    log.config(state="normal")
-    log.delete("1.0", "end")
-    log.config(state="disabled")
-    verdict_var.set("")
-
-    set_status("Decoding QR code...")
-    out(f"[*] Scanning: {Path(image_path).name}", "info")
-    out("─" * 58, "divider")
-
-    # ── Decode ────────────────────────────────────────────────────────────────
-    urls = decode_qr_from_image(image_path)
-    if not urls:
-        out("[!] No QR code found in this image.", "error")
-        verdict_var.set("NO QR FOUND")
-        set_status("Ready")
-        scan_btn.config(state="normal")
-        return
-
-    out(f"[+] Found {len(urls)} QR payload(s)\n", "success")
-
-    overall_results = []
-
-    for i, raw_url in enumerate(urls, 1):
-        out(f"  PAYLOAD {i}", "header")
-        out(f"  Original : {raw_url}", "info")
-
-        # ── Network ───────────────────────────────────────────────────────────
-        set_status("Tracing redirects...")
-        out("\n[*] Tracing redirects...", "info")
-        net = resolve_url(raw_url)
-        final_url  = net.get("final_url") or raw_url
-        net_error  = net.get("error")
-        status_code = net.get("status_code")
-
-        if net_error:
-            out(f"  [!] Site unreachable — extracted: {final_url}", "warning")
-        else:
-            out(f"  Final URL : {final_url}", "normal")
-            out(f"  Status    : {status_code}", "normal")
-            if final_url != raw_url:
-                out("  [!] Redirect detected — shortened URL unmasked!", "warning")
-
-        # ── Heuristic ─────────────────────────────────────────────────────────
-        set_status("Running heuristic scan...")
-        out("\n[*] Local Heuristic Scan...", "info")
-        h = analyze_url(final_url)
-        h_verdict = h.get("verdict", "UNKNOWN")
-        h_score   = h.get("risk_score", 0)
-        flags     = h.get("flags", [])
-
-        score_color = "success" if h_score < 20 else ("warning" if h_score < 50 else "error")
-        out(f"  Verdict    : {h_verdict}", score_color)
-        out(f"  Risk Score : {h_score}/100", score_color)
-        if flags:
-            for flag in flags:
-                out(f"  ⚑  {flag}", "warning")
-        else:
-            out("  No structural red flags found.", "success")
-
-        # ── VirusTotal ────────────────────────────────────────────────────────
-        out("\n[*] VirusTotal Threat Intelligence...", "info")
-        vt_verdict = "UNKNOWN"
-        if not VT_API_KEY or len(VT_API_KEY) < 32:
-            out("  [SKIP] No API key configured.", "muted")
-        else:
-            set_status("Querying VirusTotal (may take ~15s)...")
-            vt = check_virustotal(final_url, VT_API_KEY)
-            if vt.get("error"):
-                out(f"  [ERROR] {vt['error']}", "error")
-            else:
-                vt_verdict = vt["verdict"]
-                vt_color   = "success" if vt_verdict == "CLEAN" else ("warning" if vt_verdict == "SUSPICIOUS" else "error")
-                out(f"  VT Verdict : {vt_verdict}", vt_color)
-                out(f"  Malicious  : {vt['malicious']} / {vt['total_engines']} engines", vt_color)
-                out(f"  Suspicious : {vt['suspicious']}", "normal")
-                out(f"  Harmless   : {vt['harmless']}", "normal")
-
-        # ── Final verdict ─────────────────────────────────────────────────────
-        if h_verdict == "MALICIOUS" or vt_verdict == "MALICIOUS":
-            overall = "MALICIOUS"
-        elif h_verdict == "SUSPICIOUS" or vt_verdict == "SUSPICIOUS":
-            overall = "SUSPICIOUS"
-        else:
-            overall = "SAFE"
-
-        overall_results.append(overall)
-        out("\n" + "─" * 58, "divider")
-
-    # ── Show final verdict banner ─────────────────────────────────────────────
-    if "MALICIOUS" in overall_results:
-        verdict_var.set("MALICIOUS")
-    elif "SUSPICIOUS" in overall_results:
-        verdict_var.set("SUSPICIOUS")
-    else:
-        verdict_var.set("SAFE")
-
-    set_status("Scan complete.")
-    scan_btn.config(state="normal")
-
-
-class DeQodeApp(tk.Tk):
+class DeQodeApp(ctk.CTk):
     def __init__(self):
         super().__init__()
+
         self.title("DeQode — QR Phishing Detector")
-        self.configure(bg=BG)
-        self.geometry("820x680")
-        self.resizable(True, True)
-        self.minsize(700, 560)
+        self.geometry("1100x850")
+        self.configure(fg_color=BG_COLOR)
 
         self._image_path = tk.StringVar()
-        self._verdict    = tk.StringVar()
-        self._status     = tk.StringVar(value="Ready")
+        self._verdict = tk.StringVar()
+        self._status = tk.StringVar(value="READY")
 
-        self._build_ui()
-        self._apply_tags()
+        # Global Font
+        self.font_mono = "Courier New"
 
-    # ── UI Construction ───────────────────────────────────────────────────────
+        self.grid_rowconfigure(1, weight=1)
+        self.grid_columnconfigure(0, weight=4) # Left column
+        self.grid_columnconfigure(1, weight=6) # Right column
 
-    def _build_ui(self):
-        # ── Top header bar ────────────────────────────────────────────────────
-        header = tk.Frame(self, bg=PANEL, height=64)
-        header.pack(fill="x")
-        header.pack_propagate(False)
+        self._build_header()
+        self._build_left_pane()
+        self._build_right_pane()
+        self._build_footer()
 
-        # Cyan left accent bar
-        tk.Frame(header, bg=ACCENT, width=4).pack(side="left", fill="y")
+    def _build_header(self):
+        header = ctk.CTkFrame(self, height=60, fg_color="transparent")
+        header.grid(row=0, column=0, columnspan=2, sticky="ew", padx=20, pady=(10, 0))
 
-        tk.Label(
-            header, text="DeQode", bg=PANEL, fg=ACCENT,
-            font=FONT_TITLE
-        ).pack(side="left", padx=(16, 6), pady=12)
+        # Left branding
+        title_frame = ctk.CTkFrame(header, fg_color="transparent")
+        title_frame.pack(side="left")
+        
+        ctk.CTkLabel(
+            title_frame, 
+            text="DeQode", 
+            font=ctk.CTkFont(family=self.font_mono, size=28, weight="bold"),
+            text_color=ACCENT_CYAN,
+            anchor="w"
+        ).pack(anchor="w")
 
-        tk.Label(
-            header, text="QR Phishing Detector",
-            bg=PANEL, fg=MUTED, font=("Courier New", 11)
-        ).pack(side="left", pady=20)
+        ctk.CTkLabel(
+            title_frame, 
+            text="QR PHISHING DETECTOR", 
+            font=ctk.CTkFont(family=self.font_mono, size=14),
+            text_color=TEXT_GRAY
+        ).pack(anchor="w")
 
-        # API key badge
-        api_status = "API KEY ✓" if (VT_API_KEY and len(VT_API_KEY) >= 32) else "NO API KEY"
-        api_color  = SUCCESS if "✓" in api_status else DANGER
-        tk.Label(
-            header, text=f"  {api_status}  ",
-            bg=api_color, fg=BG, font=("Courier New", 9, "bold")
-        ).pack(side="right", padx=16, pady=20)
+        # Center credits
+        ctk.CTkLabel(
+            header,
+            text="Made by K3yur",
+            font=ctk.CTkFont(family=self.font_mono, size=17, weight="bold"),
+            text_color="#ffffff"
+        ).place(relx=0.5, rely=0.5, anchor="center")
 
-        # ── Drop zone ─────────────────────────────────────────────────────────
-        drop_frame = tk.Frame(self, bg=BG, pady=14)
-        drop_frame.pack(fill="x", padx=20)
-
-        self._drop_zone = tk.Label(
-            drop_frame,
-            text="[ DROP QR IMAGE HERE  or  CLICK TO BROWSE ]",
-            bg=PANEL, fg=ACCENT,
-            font=("Courier New", 11, "bold"),
-            relief="flat",
-            bd=0,
-            pady=28,
-            cursor="hand2"
+        # Right API Status
+        api_status = "ACTIVE" if (VT_API_KEY and len(VT_API_KEY) >= 32) else "INACTIVE"
+        api_color = SUCCESS_GREEN if api_status == "ACTIVE" else DANGER_RED
+        
+        status_frame = ctk.CTkFrame(
+            header, 
+            fg_color="transparent", 
+            border_width=1, 
+            border_color=api_color,
+            corner_radius=4
         )
-        self._drop_zone.pack(fill="x")
-        self._drop_zone.bind("<Button-1>", self._browse_file)
-        self._drop_zone.bind("<Enter>", lambda e: self._drop_zone.config(bg=BORDER, fg=TEXT))
-        self._drop_zone.bind("<Leave>", lambda e: self._drop_zone.config(bg=PANEL, fg=ACCENT))
+        status_frame.pack(side="right", pady=10)
 
-        # Dashed border effect via canvas overlay label
-        self._drop_zone.config(
-            highlightbackground=ACCENT, highlightthickness=1
+        ctk.CTkLabel(
+            status_frame,
+            text=f" API KEY: {api_status} ",
+            font=ctk.CTkFont(family=self.font_mono, size=16, weight="bold"),
+            text_color=api_color
+        ).pack(padx=10, pady=4)
+
+    def _build_left_pane(self):
+        left_pane = ctk.CTkFrame(self, fg_color="transparent")
+        left_pane.grid(row=1, column=0, sticky="nsew", padx=20, pady=20)
+        
+        ctk.CTkLabel(
+            left_pane,
+            text="TARGET ACQUISITION",
+            font=ctk.CTkFont(family=self.font_mono, size=16, weight="bold"),
+            text_color="#cccccc",
+            anchor="w"
+        ).pack(fill="x", pady=(0, 10))
+
+        # Drop Zone
+        self.drop_container = ctk.CTkFrame(left_pane, fg_color=PANEL_BG, border_width=1, border_color=BORDER_COLOR)
+        self.drop_container.pack(fill="x")
+        
+        self.drop_frame = tk.Canvas(
+            self.drop_container,
+            bg=PANEL_BG,
+            highlightthickness=0,
+            height=280
         )
+        self.drop_frame.pack(fill="x", padx=1, pady=1)
+        self.drop_frame.bind("<Button-1>", lambda e: self._browse_file())
+        
+        # Dashed Border Simulation
+        self.drop_frame.after(100, lambda: self._draw_dashed_rect())
 
-        # File path display
-        path_frame = tk.Frame(self, bg=BG)
-        path_frame.pack(fill="x", padx=20)
+        # Path display
+        path_box = ctk.CTkFrame(left_pane, fg_color="#1a1a1a", corner_radius=0, height=35, border_width=1, border_color=BORDER_COLOR)
+        path_box.pack(fill="x", pady=15)
+        path_box.pack_propagate(False)
 
-        tk.Label(path_frame, text="FILE:", bg=BG, fg=MUTED,
-                 font=FONT_SMALL).pack(side="left")
-        tk.Label(path_frame, textvariable=self._image_path,
-                 bg=BG, fg=ACCENT, font=FONT_SMALL).pack(side="left", padx=6)
+        ctk.CTkLabel(
+            path_box,
+            text="PATH: ",
+            font=ctk.CTkFont(family=self.font_mono, size=16, weight="bold"),
+            text_color=ACCENT_CYAN
+        ).pack(side="left", padx=10)
 
-        # ── Scan button ───────────────────────────────────────────────────────
-        btn_frame = tk.Frame(self, bg=BG, pady=10)
-        btn_frame.pack(fill="x", padx=20)
+        self.path_label = ctk.CTkLabel(
+            path_box,
+            textvariable=self._image_path,
+            font=ctk.CTkFont(family=self.font_mono, size=16),
+            text_color="#999999",
+            anchor="w"
+        )
+        self.path_label.pack(side="left", fill="x", expand=True)
 
-        self._scan_btn = tk.Button(
-            btn_frame,
-            text="▶  RUN SCAN",
-            bg=ACCENT, fg=BG,
-            font=("Courier New", 12, "bold"),
-            relief="flat", bd=0,
-            padx=28, pady=10,
-            cursor="hand2",
-            activebackground="#00b8d9",
-            activeforeground=BG,
+        # Buttons
+        btn_row = ctk.CTkFrame(left_pane, fg_color="transparent")
+        btn_row.pack(fill="x")
+
+        self.scan_btn = ctk.CTkButton(
+            btn_row,
+            text="RUN SCAN",
+            font=ctk.CTkFont(family=self.font_mono, size=17, weight="bold"),
+            fg_color=ACCENT_CYAN,
+            hover_color="#00aabb",
+            text_color=BG_COLOR,
+            corner_radius=2,
+            height=40,
             command=self._start_scan
         )
-        self._scan_btn.pack(side="left")
+        self.scan_btn.pack(side="left", fill="x", expand=True, padx=(0, 5))
 
-        tk.Button(
-            btn_frame,
+        self.clear_btn = ctk.CTkButton(
+            btn_row,
             text="CLEAR",
-            bg=PANEL, fg=MUTED,
-            font=("Courier New", 10),
-            relief="flat", bd=0,
-            padx=16, pady=10,
-            cursor="hand2",
-            activebackground=BORDER,
-            activeforeground=TEXT,
-            command=self._clear
-        ).pack(side="left", padx=(10, 0))
-
-        # ── Verdict banner ────────────────────────────────────────────────────
-        self._verdict_label = tk.Label(
-            self, textvariable=self._verdict,
-            bg=BG, fg=BG,
-            font=("Courier New", 15, "bold"),
-            pady=8
+            font=ctk.CTkFont(family=self.font_mono, size=17, weight="bold"),
+            fg_color="transparent",
+            border_width=1,
+            border_color="#333333",
+            text_color="#999999",
+            hover_color="#111111",
+            corner_radius=2,
+            height=40,
+            width=80,
+            command=self._clear_all
         )
-        self._verdict_label.pack(fill="x", padx=20)
-        self._verdict.trace_add("write", self._update_verdict_style)
+        self.clear_btn.pack(side="right")
 
-        # ── Log output ────────────────────────────────────────────────────────
-        log_frame = tk.Frame(self, bg=BORDER, padx=1, pady=1)
-        log_frame.pack(fill="both", expand=True, padx=20, pady=(0, 6))
+        # Verdict Panel (Bottom Left)
+        self.verdict_container = ctk.CTkFrame(left_pane, fg_color=PANEL_BG, border_width=2, border_color=BORDER_COLOR, corner_radius=2)
+        self.verdict_container.pack(fill="x", side="bottom", pady=20)
 
-        inner = tk.Frame(log_frame, bg=PANEL)
-        inner.pack(fill="both", expand=True)
+        self.verdict_display = ctk.CTkLabel(
+            self.verdict_container, 
+            text="", 
+            font=(self.font_mono, 34, "bold"),
+            height=100
+        )
+        self.verdict_display.pack(fill="both", expand=True)
+
+        self._verdict.trace_add("write", self._update_verdict_ui)
+
+    def _draw_dashed_rect(self):
+        w = self.drop_frame.winfo_width()
+        h = self.drop_frame.winfo_height()
+        self.drop_frame.create_rectangle(
+            5, 5, w-5, h-5, 
+            outline="#333333", 
+            dash=(6, 6), 
+            width=1
+        )
+        self.drop_frame.create_text(
+            w/2, h/2 - 30, 
+            text="+", 
+            fill="#555555", 
+            font=(self.font_mono, 54)
+        )
+        self.drop_frame.create_text(
+            w/2, h/2 + 40, 
+            text="Drop QR image or click to browse", 
+            fill=ACCENT_CYAN, 
+            font=(self.font_mono, 14),
+            width=w-40
+        )
+
+    def _build_right_pane(self):
+        right_pane = ctk.CTkFrame(self, fg_color="transparent")
+        right_pane.grid(row=1, column=1, sticky="nsew", padx=20, pady=20)
+
+        log_header = ctk.CTkFrame(right_pane, fg_color="transparent")
+        log_header.pack(fill="x", pady=(0, 8))
+
+        ctk.CTkLabel(
+            log_header,
+            text="SCAN OUTPUT LOGS",
+            font=ctk.CTkFont(family=self.font_mono, size=16, weight="bold"),
+            text_color="#cccccc",
+            anchor="w"
+        ).pack(side="left")
+
+        # Traffic Lights
+        light_row = ctk.CTkFrame(log_header, fg_color="transparent")
+        light_row.pack(side="right")
+        for color in ["#ff5f56", "#ffbd2e", "#27c93f"]:
+            f = ctk.CTkFrame(light_row, width=10, height=10, corner_radius=5, fg_color=color)
+            f.pack(side="left", padx=3)
+
+        self.log_frame = ctk.CTkFrame(right_pane, fg_color=PANEL_BG, border_width=1, border_color=BORDER_COLOR)
+        self.log_frame.pack(fill="both", expand=True)
 
         self._log = tk.Text(
-            inner,
-            bg=PANEL, fg=TEXT,
-            font=FONT_MONO,
-            relief="flat", bd=0,
-            padx=14, pady=12,
-            state="disabled",
-            wrap="word",
-            cursor="arrow",
-            selectbackground=BORDER,
-            insertbackground=ACCENT
+            self.log_frame,
+            bg=PANEL_BG,
+            fg="#aaaaaa",
+            font=(self.font_mono, 17),
+            padx=20,
+            pady=20,
+            borderwidth=0,
+            highlightthickness=0,
+            insertbackground=ACCENT_CYAN,
+            state="disabled"
         )
-        scrollbar = tk.Scrollbar(inner, command=self._log.yview,
-                                 bg=PANEL, troughcolor=PANEL,
-                                 relief="flat", bd=0, width=10)
-        self._log.config(yscrollcommand=scrollbar.set)
-        scrollbar.pack(side="right", fill="y")
         self._log.pack(fill="both", expand=True)
+        self._apply_tags()
 
-        # ── Status bar ────────────────────────────────────────────────────────
-        status_bar = tk.Frame(self, bg=GRID_LINE, height=26)
-        status_bar.pack(fill="x", side="bottom")
-        status_bar.pack_propagate(False)
+    def _build_footer(self):
+        footer = ctk.CTkFrame(self, height=30, fg_color="transparent")
+        footer.grid(row=2, column=0, columnspan=2, sticky="ew")
 
-        tk.Label(status_bar, textvariable=self._status,
-                 bg=GRID_LINE, fg=MUTED,
-                 font=("Courier New", 9),
-                 padx=12).pack(side="left", pady=4)
+        left_side = ctk.CTkFrame(footer, fg_color="transparent")
+        left_side.pack(side="left", padx=20)
 
-        tk.Label(status_bar, text="v1.1  |  DeQode",
-                 bg=GRID_LINE, fg=MUTED,
-                 font=("Courier New", 9),
-                 padx=12).pack(side="right", pady=4)
+        # Ready LED
+        self.led = ctk.CTkFrame(left_side, width=8, height=8, corner_radius=4, fg_color=SUCCESS_GREEN)
+        self.led.pack(side="left", padx=(0, 8))
+
+        ctk.CTkLabel(
+            left_side,
+            textvariable=self._status,
+            font=ctk.CTkFont(family=self.font_mono, size=13),
+            text_color="#888888"
+        ).pack(side="left")
+
+        right_side = ctk.CTkLabel(
+            footer,
+            text="UTF-8  |  LATENCY: 24MS  |  DEQODE V1.1",
+            font=ctk.CTkFont(family=self.font_mono, size=13),
+            text_color="#888888"
+        )
+        right_side.pack(side="right", padx=20)
 
     def _apply_tags(self):
         t = self._log
-        t.tag_config("normal",  foreground=TEXT)
-        t.tag_config("info",    foreground=ACCENT)
-        t.tag_config("success", foreground=SUCCESS)
-        t.tag_config("error",   foreground=DANGER)
-        t.tag_config("warning", foreground=WARNING)
-        t.tag_config("muted",   foreground=MUTED)
-        t.tag_config("header",  foreground=ACCENT2, font=("Courier New", 11, "bold"))
-        t.tag_config("divider", foreground=BORDER)
+        t.tag_config("normal", foreground="#aaaaaa")
+        t.tag_config("info", foreground=ACCENT_CYAN)
+        t.tag_config("success", foreground=SUCCESS_GREEN)
+        t.tag_config("error", foreground=DANGER_RED)
+        t.tag_config("warning", foreground=WARNING_ORANGE)
+        t.tag_config("dim", foreground=TEXT_GRAY)
 
-    # ── Actions ───────────────────────────────────────────────────────────────
-
-    def _browse_file(self, event=None):
-        path = filedialog.askopenfilename(
-            title="Select QR Code Image",
-            filetypes=[("Image Files", "*.png *.jpg *.jpeg *.bmp *.gif *.webp"),
-                       ("All Files", "*.*")]
-        )
+    def _browse_file(self):
+        path = filedialog.askopenfilename()
         if path:
             self._image_path.set(path)
-            self._drop_zone.config(
-                text=f"  ✓  {Path(path).name}",
-                fg=SUCCESS
-            )
+
+    def _clear_all(self):
+        self._log.configure(state="normal")
+        self._log.delete("1.0", "end")
+        self._log.configure(state="disabled")
+        self._image_path.set("")
+        self._verdict.set("")
+
+    def _log_out(self, msg, tag="normal"):
+        self._log.configure(state="normal")
+        self._log.insert("end", msg + "\n", tag)
+        self._log.see("end")
+        self._log.configure(state="disabled")
 
     def _start_scan(self):
         path = self._image_path.get().strip()
-        if not path:
-            self._browse_file()
-            path = self._image_path.get().strip()
-        if not path:
-            return
-
-        self._scan_btn.config(state="disabled")
-        self._verdict_var_clear()
+        if not path: return
+        self.scan_btn.configure(state="disabled")
+        self._log.configure(state="normal")
+        self._log.delete("1.0", "end")
+        self._log.configure(state="disabled")
+        self._verdict.set("")
+        
+        self._log_out("DeQode v1.1.0 Initializing...", "dim")
+        self._log_out("[SYSTEM] Hooking API endpoints... DONE", "dim")
+        self._log_out("[SYSTEM] Loading heuristic signatures... 482 loaded", "dim")
+        
         threading.Thread(
-            target=run_scan,
-            args=(path, self._log, self._verdict, self._status, self._scan_btn),
+            target=self._run_scan_logic,
+            args=(path,),
             daemon=True
         ).start()
 
-    def _verdict_var_clear(self):
-        self._verdict.set("")
-        self._verdict_label.config(bg=BG, fg=BG)
+    def _run_scan_logic(self, image_path):
+        def out(m, t="normal"): self.after(0, lambda: self._log_out(m, t))
 
-    def _clear(self):
-        self._image_path.set("")
-        self._drop_zone.config(
-            text="[ DROP QR IMAGE HERE  or  CLICK TO BROWSE ]",
-            fg=ACCENT
-        )
-        self._verdict_var_clear()
-        self._log.config(state="normal")
-        self._log.delete("1.0", "end")
-        self._log.config(state="disabled")
-        self._status.set("Ready")
+        out("\n[INFO] Decoding QR matrix from source...", "info")
+        urls = decode_qr_from_image(image_path)
 
-    def _update_verdict_style(self, *args):
-        v = self._verdict.get()
-        if v == "MALICIOUS":
-            self._verdict_label.config(
-                bg=DANGER, fg="white",
-                text="  ⚠  MALICIOUS — DO NOT OPEN THIS LINK  ⚠  "
-            )
-        elif v == "SUSPICIOUS":
-            self._verdict_label.config(
-                bg=WARNING, fg=BG,
-                text="  ⚑  SUSPICIOUS — Proceed with extreme caution  ⚑  "
-            )
-        elif v == "SAFE":
-            self._verdict_label.config(
-                bg=SUCCESS, fg=BG,
-                text="  ✓  SAFE — No threats detected  ✓  "
-            )
-        elif v == "NO QR FOUND":
-            self._verdict_label.config(
-                bg=MUTED, fg=TEXT,
-                text="  ?  No QR code detected in image  "
-            )
+        if not urls:
+            out("[ALERT] No QR sequence detected in matrix.", "error")
+            self.after(0, lambda: self._verdict.set("NO QR FOUND"))
+            self.after(0, lambda: self.scan_btn.configure(state="normal"))
+            return
+
+        out(f"[SUCCESS] Discovered {len(urls)} payload(s) in buffer.\n", "success")
+
+        overall_findings = []
+        for i, url in enumerate(urls, 1):
+            out(f"--- PAYLOAD_{i} ANALYSIS ---", "dim")
+            out(f"[INFO] Raw data: {url}", "dim")
+            
+            # Trace Network
+            net = resolve_url(url)
+            final = net.get("final_url") or url
+            if final != url:
+                out("[WARNING] Redirect detected (Shortened/Masked URL)", "warning")
+            out(f"[INFO] Final endpoint: {final}", "info")
+
+            # Local Heuristics
+            h = analyze_url(final)
+            risk = h.get("risk_score", 0)
+            h_verdict = h.get("verdict", "UNKNOWN")
+            
+            risk_tag = "success" if risk < 20 else ("warning" if risk < 50 else "error")
+            out(f"[INFO] Heuristic Risk: {risk}/100 -> {h_verdict}", risk_tag)
+            
+            # VirusTotal Integration
+            vt_verdict = "UNKNOWN"
+            if VT_API_KEY:
+                out("[INFO] Querying VirusTotal Intelligence...", "info")
+                vt = check_virustotal(final, VT_API_KEY)
+                vt_verdict = vt.get("verdict", "UNKNOWN")
+                vt_tag = "success" if vt_verdict == "CLEAN" else ("warning" if vt_verdict == "SUSPICIOUS" else "error")
+                out(f"[INFO] VT Intel: {vt_verdict} ({vt.get('malicious', 0)} engines flagged)", vt_tag)
+
+            # Aggregate verdict for this payload
+            if h_verdict == "MALICIOUS" or vt_verdict == "MALICIOUS":
+                p_verdict = "MALICIOUS"
+            elif h_verdict == "SUSPICIOUS" or vt_verdict == "SUSPICIOUS":
+                p_verdict = "SUSPICIOUS"
+            else:
+                p_verdict = "SAFE"
+            
+            overall_findings.append(p_verdict)
+            out("---------------------------\n", "dim")
+
+        # Final Aggregation and Summary
+        out("\n" + "="*40, "dim")
+        out("       [ SCAN SUMMARY ]", "info")
+        out("="*40, "dim")
+        
+        malicious_count = overall_findings.count("MALICIOUS")
+        suspicious_count = overall_findings.count("SUSPICIOUS")
+        safe_count = overall_findings.count("SAFE")
+        
+        out(f" Total Payloads: {len(overall_findings)}")
+        if malicious_count: out(f" [!] MALICIOUS PAYLOADS: {malicious_count}", "error")
+        if suspicious_count: out(f" [!] SUSPICIOUS PAYLOADS: {suspicious_count}", "warning")
+        if safe_count: out(f" [✓] SAFE PAYLOADS: {safe_count}", "success")
+
+        if malicious_count > 0:
+            out("\n!!! ACTION REQUIRED: MALICIOUS CONTENT DETECTED !!!", "error")
+            self.after(0, lambda: self._verdict.set("MALICIOUS"))
+        elif suspicious_count > 0:
+            out("\n!!! CAUTION: SUSPICIOUS ACTIVITY IDENTIFIED !!!", "warning")
+            self.after(0, lambda: self._verdict.set("SUSPICIOUS"))
         else:
-            self._verdict_label.config(bg=BG, fg=BG, text="")
+            out("\n[DONE] NO THREATS IDENTIFIED IN SCAN BUFFER.", "success")
+            self.after(0, lambda: self._verdict.set("SAFE"))
 
+        self.after(0, lambda: self.scan_btn.configure(state="normal"))
+
+    def _update_verdict_ui(self, *args):
+        v = self._verdict.get()
+        container = self.verdict_container
+        display = self.verdict_display
+
+        if v == "MALICIOUS":
+            container.configure(border_color=DANGER_RED, fg_color=DANGER_RED)
+            display.configure(text="MALICIOUS", text_color="#ffffff", fg_color=DANGER_RED)
+            self._status.set("SYSTEM:THREAT_DETECTED")
+            self.led.configure(fg_color=DANGER_RED)
+        elif v == "SUSPICIOUS":
+            container.configure(border_color=WARNING_ORANGE, fg_color=WARNING_ORANGE)
+            display.configure(text="SUSPICIOUS", text_color="#000000", fg_color=WARNING_ORANGE)
+            self._status.set("SYSTEM:ALERT")
+            self.led.configure(fg_color=WARNING_ORANGE)
+        elif v == "SAFE":
+            container.configure(border_color=SUCCESS_GREEN, fg_color=SUCCESS_GREEN)
+            display.configure(text="SAFE", text_color=BG_COLOR, fg_color=SUCCESS_GREEN)
+            self._status.set("SYSTEM:SECURE")
+            self.led.configure(fg_color=SUCCESS_GREEN)
+        else:
+            container.configure(border_color=BORDER_COLOR, fg_color=PANEL_BG)
+            display.configure(text="", fg_color=PANEL_BG)
+            self._status.set("READY")
+            self.led.configure(fg_color=SUCCESS_GREEN)
 
 if __name__ == "__main__":
     app = DeQodeApp()
