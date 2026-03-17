@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DeQode - QR Phishing Detector</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #050505 0%, #0a0a0a 100%);
+            color: #e0e0e0;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 40px;
+            padding: 20px 0;
+            border-bottom: 1px solid #333333;
+        }
+
+        .header-left h1 {
+            font-size: 2.5em;
+            background: linear-gradient(135deg, #33ccff, #00ff99);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 5px;
+        }
+
+        .header-left p {
+            color: #999999;
+            font-size: 0.95em;
+        }
+
+        .header-right {
+            text-align: right;
+            font-size: 1em;
+            font-weight: 600;
+            color: #33ccff;
+        }
+
+        /* Layout Grid */
+        .layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+            min-height: 500px;
+        }
+
+        @media (max-width: 1024px) {
+            .layout {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Cards */
+        .card {
+            background: #161616;
+            border: 1px solid #333333;
+            border-radius: 12px;
+            padding: 30px;
+            transition: all 0.3s ease;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .card:hover {
+            border-color: #33ccff;
+            box-shadow: 0 0 20px rgba(51, 204, 255, 0.1);
+        }
+
+        .card-title {
+            font-size: 1.3em;
+            margin-bottom: 20px;
+            color: #33ccff;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .card-title::before {
+            content: '';
+            width: 4px;
+            height: 24px;
+            background: #33ccff;
+            border-radius: 2px;
+        }
+
+        /* Upload Area */
+        .upload-area {
+            border: 2px dashed #333333;
+            border-radius: 8px;
+            padding: 40px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: #0a0a0a;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .upload-area:hover {
+            border-color: #33ccff;
+            background: rgba(51, 204, 255, 0.05);
+        }
+
+        .upload-area.dragover {
+            border-color: #33ccff;
+            background: rgba(51, 204, 255, 0.1);
+        }
+
+        .upload-icon {
+            font-size: 3em;
+            margin-bottom: 15px;
+            display: block;
+        }
+
+        .upload-text {
+            color: #999999;
+            margin-bottom: 10px;
+        }
+
+        .upload-hint {
+            color: #666666;
+            font-size: 0.9em;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        .file-name {
+            margin-top: 15px;
+            color: #10b981;
+            font-weight: 500;
+        }
+
+        /* Buttons */
+        .button {
+            background: linear-gradient(135deg, #33ccff, #00ff99);
+            color: #050505;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 1em;
+            margin-top: 20px;
+            width: 100%;
+        }
+
+        .button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(51, 204, 255, 0.3);
+        }
+
+        .button:active {
+            transform: translateY(0);
+        }
+
+        .button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Logs Section */
+        .logs-section {
+            background: #0a0a0a;
+            border: 1px solid #333333;
+            border-radius: 8px;
+            padding: 15px;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 0.85em;
+            line-height: 1.6;
+            max-height: 600px;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .logs-section::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .logs-section::-webkit-scrollbar-track {
+            background: #0a0a0a;
+        }
+
+        .logs-section::-webkit-scrollbar-thumb {
+            background: #333333;
+            border-radius: 4px;
+        }
+
+        .logs-section::-webkit-scrollbar-thumb:hover {
+            background: #555555;
+        }
+
+        .log-line {
+            margin: 4px 0;
+            word-break: break-all;
+        }
+
+        .log-system {
+            color: #33ccff;
+        }
+
+        .log-success {
+            color: #10b981;
+        }
+
+        .log-warning {
+            color: #f59e0b;
+        }
+
+        .log-error {
+            color: #ef4444;
+        }
+
+        .log-malicious {
+            color: #ff6b6b;
+            font-weight: bold;
+        }
+
+        .log-info {
+            color: #999999;
+        }
+
+        /* Verdict Section */
+        .verdict-section {
+            margin-top: 30px;
+            padding: 30px;
+            border-radius: 12px;
+            text-align: center;
+            background: #161616;
+            border: 1px solid #333333;
+            min-height: 150px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .verdict-badge-large {
+            font-size: 2.5em;
+            font-weight: bold;
+            padding: 20px 40px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .verdict-malicious-large {
+            background: #ef4444;
+            color: white;
+            box-shadow: 0 0 30px rgba(239, 68, 68, 0.5);
+        }
+
+        .verdict-suspicious-large {
+            background: #f59e0b;
+            color: white;
+            box-shadow: 0 0 30px rgba(245, 158, 11, 0.5);
+        }
+
+        .verdict-safe-large {
+            background: #10b981;
+            color: white;
+            box-shadow: 0 0 30px rgba(16, 185, 129, 0.5);
+        }
+
+        .verdict-description {
+            color: #999999;
+            font-size: 0.95em;
+            margin-top: 10px;
+        }
+
+        /* Results Section */
+        .results-section {
+            margin-top: 30px;
+        }
+
+        .result-card {
+            background: #0a0a0a;
+            border-left: 4px solid;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .result-card.malicious {
+            border-left-color: #ef4444;
+            background: rgba(239, 68, 68, 0.05);
+        }
+
+        .result-card.suspicious {
+            border-left-color: #f59e0b;
+            background: rgba(245, 158, 11, 0.05);
+        }
+
+        .result-card.safe {
+            border-left-color: #10b981;
+            background: rgba(16, 185, 129, 0.05);
+        }
+
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 15px;
+        }
+
+        .verdict-badge {
+            display: inline-block;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.9em;
+        }
+
+        .verdict-malicious {
+            background: #ef4444;
+            color: white;
+        }
+
+        .verdict-suspicious {
+            background: #f59e0b;
+            color: white;
+        }
+
+        .verdict-safe {
+            background: #10b981;
+            color: white;
+        }
+
+        .result-url {
+            margin-bottom: 12px;
+        }
+
+        .url-label {
+            color: #999999;
+            font-size: 0.9em;
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        .url-value {
+            color: #33ccff;
+            word-break: break-all;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+
+        .result-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .detail-item {
+            background: #161616;
+            padding: 12px;
+            border-radius: 6px;
+            border: 1px solid #333333;
+        }
+
+        .detail-label {
+            color: #999999;
+            font-size: 0.85em;
+            margin-bottom: 4px;
+        }
+
+        .detail-value {
+            color: #e0e0e0;
+            font-weight: 600;
+            font-size: 1.1em;
+        }
+
+        .flags-list {
+            margin-top: 15px;
+        }
+
+        .flags-label {
+            color: #999999;
+            font-size: 0.9em;
+            margin-bottom: 8px;
+        }
+
+        .flag-item {
+            display: inline-block;
+            background: #ef4444;
+            color: white;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 0.85em;
+            margin-right: 6px;
+            margin-bottom: 6px;
+        }
+
+        /* Status Messages */
+        .status-message {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .status-loading {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .spinner {
+            border: 2px solid #333333;
+            border-top: 2px solid #33ccff;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .status-error {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid #ef4444;
+            color: #ff9090;
+        }
+
+        .status-success {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid #10b981;
+            color: #90ffcc;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            color: #666666;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #333333;
+        }
+
+        .footer a {
+            color: #33ccff;
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-left">
+                <h1>⚔️ DeQode</h1>
+                <p>QR PHISHING DETECTOR</p>
+            </div>
+            <div class="header-right">
+                Made by K3yur
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="layout">
+            <!-- Upload Card -->
+            <div class="card">
+                <div class="card-title">TARGET ACQUISITION</div>
+                <div class="upload-area" id="uploadArea">
+                    <span class="upload-icon">📸</span>
+                    <div class="upload-text">Drag QR image or click to browse</div>
+                    <div class="upload-hint">PNG, JPG, GIF, BMP, WebP</div>
+                    <div class="file-name" id="fileName"></div>
+                    <input type="file" id="fileInput" accept="image/*" style="display: none;">
+                </div>
+                <button class="button" id="analyzeBtn">
+                    RUN SCAN
+                </button>
+            </div>
+
+            <!-- Logs Card -->
+            <div class="card">
+                <div class="card-title">SCAN OUTPUT LOGS</div>
+                <div class="logs-section" id="logsSection">
+                    <div class="log-line log-info">Ready to scan...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Verdict Section -->
+        <div class="verdict-section" id="verdictSection" style="display: none;">
+            <div class="verdict-badge-large" id="verdictBadge"></div>
+            <div class="verdict-description" id="verdictDescription"></div>
+        </div>
+
+        <!-- Results Section -->
+        <div class="results-section" id="resultsSection" style="display: none;">
+            <div class="card">
+                <div class="card-title">DETAILED PAYLOAD ANALYSIS</div>
+                <div id="resultsContainer"></div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <p>DeQode v1.0 — Protecting you from QR code phishing threats 🛡️</p>
+        </div>
+    </div>
+
+    <script>
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const fileName = document.getElementById('fileName');
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        const logsSection = document.getElementById('logsSection');
+        const verdictSection = document.getElementById('verdictSection');
+        const verdictBadge = document.getElementById('verdictBadge');
+        const verdictDescription = document.getElementById('verdictDescription');
+        const resultsSection = document.getElementById('resultsSection');
+        const resultsContainer = document.getElementById('resultsContainer');
+
+        let selectedFile = null;
+
+        // Upload area click - trigger file input
+        if (uploadArea) {
+            uploadArea.addEventListener('click', () => {
+                const inputElement = document.getElementById('fileInput');
+                if (inputElement) {
+                    inputElement.click();
+                }
+            });
+        }
+
+        // File input change
+        if (fileInput) {
+            fileInput.addEventListener('change', (e) => {
+                if (e.target && e.target.files && e.target.files.length > 0) {
+                    handleFileSelect(e.target.files[0]);
+                }
+            });
+        }
+
+        // Drag and drop
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            handleFileSelect(e.dataTransfer.files[0]);
+        });
+
+        function handleFileSelect(file) {
+            if (!file) return;
+
+            const validTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/bmp', 'image/webp'];
+            if (!validTypes.includes(file.type)) {
+                addLog('Invalid file type. Please use PNG, JPG, GIF, or BMP.', 'error');
+                return;
+            }
+
+            selectedFile = file;
+            fileName.textContent = `✓ ${file.name}`;
+        }
+
+        // Analyze button
+        analyzeBtn.addEventListener('click', analyzeQRCode);
+
+        function addLog(message, type = 'info') {
+            const logLine = document.createElement('div');
+            logLine.className = `log-line log-${type}`;
+            logLine.textContent = message;
+            logsSection.appendChild(logLine);
+            logsSection.scrollTop = logsSection.scrollHeight;
+        }
+
+        function clearLogs() {
+            logsSection.innerHTML = '';
+        }
+
+        async function analyzeQRCode() {
+            if (!selectedFile) {
+                addLog('[ERROR] Please select a file first.', 'error');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+
+            analyzeBtn.disabled = true;
+            clearLogs();
+            verdictSection.style.display = 'none';
+            resultsSection.style.display = 'none';
+
+            addLog('DeQode v1.0 Initializing...', 'system');
+            addLog('[SYSTEM] Hosting API endpoints...', 'system');
+            addLog('[SYSTEM] Loading heuristic signatures...', 'system');
+
+            try {
+                const response = await fetch('/api/analyze', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    addLog(`[ERROR] ${data.error || 'Analysis failed'}`, 'error');
+                    return;
+                }
+
+                addLog(`[SUCCESS] QR decoded: ${data.results[0].original_url}`, 'success');
+
+                // Process and display results
+                displayResults(data);
+                showVerdict(data);
+
+                addLog(`[SUCCESS] Analysis complete! Found ${data.qr_count} QR code(s).`, 'success');
+            } catch (error) {
+                addLog(`[ERROR] ${error.message}`, 'error');
+            } finally {
+                analyzeBtn.disabled = false;
+            }
+        }
+
+        function showVerdict(data) {
+            const finalVerdict = data.results[0].overall_verdict;
+            
+            addLog('', 'info');
+            addLog('==================================================', 'info');
+
+            if (finalVerdict === 'MALICIOUS') {
+                addLog('!!! SCAN TERMINATED: MALICIOUS PAYLOAD IDENTIFIED !!!', 'malicious');
+                verdictBadge.className = 'verdict-badge-large verdict-malicious-large';
+                verdictBadge.textContent = '⚠️ MALICIOUS';
+                verdictDescription.textContent = 'THREAT DETECTED / HIGH CONFIDENCE';
+            } else if (finalVerdict === 'SUSPICIOUS') {
+                addLog('⚠️  FINAL VERDICT: SUSPICIOUS — Proceed with caution', 'warning');
+                verdictBadge.className = 'verdict-badge-large verdict-suspicious-large';
+                verdictBadge.textContent = '⚠️ SUSPICIOUS';
+                verdictDescription.textContent = 'POTENTIALLY DANGEROUS';
+            } else {
+                addLog('✅  FINAL VERDICT: SAFE', 'success');
+                verdictBadge.className = 'verdict-badge-large verdict-safe-large';
+                verdictBadge.textContent = '✅ SAFE';
+                verdictDescription.textContent = 'NO THREATS DETECTED';
+            }
+
+            addLog('==================================================', 'info');
+            verdictSection.style.display = 'flex';
+        }
+
+        function displayResults(data) {
+            resultsContainer.innerHTML = '';
+
+            data.results.forEach((result, index) => {
+                const verdict = result.overall_verdict;
+                const resultCard = document.createElement('div');
+                resultCard.className = `result-card ${verdict.toLowerCase()}`;
+
+                const flags = result.heuristic_flags || [];
+                const flagsHtml = flags.length > 0
+                    ? `<div class="flags-list">
+                        <div class="flags-label">⚠️ Detected Issues:</div>
+                        ${flags.map(flag => `<span class="flag-item">${escapeHtml(flag)}</span>`).join('')}
+                      </div>`
+                    : '';
+
+                const vtInfo = result.vt_verdict !== 'UNKNOWN'
+                    ? `<div class="detail-item">
+                        <div class="detail-label">VirusTotal</div>
+                        <div class="detail-value">${result.vt_verdict}</div>
+                        <div style="color: #999999; font-size: 0.85em; margin-top: 4px;">
+                            ${result.vt_detections}/${result.vt_engines} engines
+                        </div>
+                      </div>`
+                    : '';
+
+                resultCard.innerHTML = `
+                    <div class="result-header">
+                        <div>
+                            <div style="font-weight: 500; color: #e0e0e0;">Payload ${index + 1}</div>
+                        </div>
+                        <span class="verdict-badge verdict-${verdict.toLowerCase()}">
+                            ${verdict}
+                        </span>
+                    </div>
+
+                    <div class="result-url">
+                        <span class="url-label">Original URL:</span>
+                        <div class="url-value">${escapeHtml(result.original_url)}</div>
+                    </div>
+
+                    ${result.redirect_detected ? `
+                        <div class="result-url">
+                            <span class="url-label">Final Destination (after redirects):</span>
+                            <div class="url-value">${escapeHtml(result.final_url)}</div>
+                        </div>
+                    ` : ''}
+
+                    <div class="result-details">
+                        <div class="detail-item">
+                            <div class="detail-label">Heuristic Verdict</div>
+                            <div class="detail-value">${result.heuristic_verdict}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Risk Score</div>
+                            <div class="detail-value">${result.heuristic_score}/100</div>
+                        </div>
+                        ${result.status_code ? `
+                            <div class="detail-item">
+                                <div class="detail-label">HTTP Status</div>
+                                <div class="detail-value">${result.status_code}</div>
+                            </div>
+                        ` : ''}
+                        ${vtInfo}
+                    </div>
+
+                    ${flagsHtml}
+
+                    ${result.network_error ? `
+                        <div style="margin-top: 15px; padding: 10px; background: rgba(245, 158, 11, 0.1); 
+                                    border-left: 2px solid #f59e0b; border-radius: 4px; color: #fcd34d;">
+                            ⚠️ Network Note: ${escapeHtml(result.network_error)}
+                        </div>
+                    ` : ''}
+                `;
+
+                resultsContainer.appendChild(resultCard);
+            });
+
+            resultsSection.style.display = 'block';
+            resultsSection.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function escapeHtml(text) {
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return text.replace(/[&<>"']/g, m => map[m]);
+        }
+    </script>
+</body>
+</html>

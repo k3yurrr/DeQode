@@ -2,6 +2,7 @@ beautifulsoup4==4.14.3
 certifi==2026.2.25
 charset-normalizer==3.4.4
 dnspython==2.8.0
+Flask==3.0.0
 idna==3.11
 numpy==2.4.2
 opencv-python==4.13.0.92
