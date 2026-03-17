@@ -36,6 +36,10 @@ if not VT_API_KEY:
                 if line.startswith("VT_API_KEY="):
                     VT_API_KEY = line.split("=", 1)[1].strip().strip('"').strip("'")
                     break
+                    
+# Push it to system env so reputation.py can find it automatically
+if VT_API_KEY:
+    os.environ["VT_API_KEY"] = VT_API_KEY
 
 # ── Import modules ──────────────────────────────────────────────────────────
 # Ensure these modules are in your repository structure
@@ -100,7 +104,12 @@ def analyze():
                 'redirect_detected': False,
                 'heuristic_verdict': 'UNKNOWN',
                 'vt_verdict': 'UNKNOWN',
-                'overall_verdict': 'UNKNOWN'
+                'overall_verdict': 'UNKNOWN',
+                'heuristic_score': 0,
+                'heuristic_flags': [],
+                'vt_detections': 0,
+                'vt_engines': 0,
+                'network_error': None
             }
             
             # 1. Resolve
@@ -109,15 +118,31 @@ def analyze():
             result['final_url'] = final_url
             result['status_code'] = net_result.get("status_code")
             result['redirect_detected'] = (final_url != raw_url)
+            if net_result.get("error"):
+                result['network_error'] = net_result.get("error")
             
             # 2. Heuristics
             heuristic = analyze_url(final_url)
             result['heuristic_verdict'] = heuristic.get("verdict", "UNKNOWN")
+            # --- FIX: Pass the score and flags to the frontend ---
+            result['heuristic_score'] = heuristic.get("risk_score", 0)
+            result['heuristic_flags'] = heuristic.get("flags", [])
             
             # 3. VirusTotal
             if VT_API_KEY and len(VT_API_KEY) >= 32:
+                # FIX: Passed VT_API_KEY back into the function!
                 vt = check_virustotal(final_url, VT_API_KEY)
-                result['vt_verdict'] = vt.get("verdict", "UNKNOWN")
+                
+                if vt.get("error"):
+                    result['vt_verdict'] = "UNKNOWN"
+                else:
+                    # --- FIX: Pass VT engine counts to the frontend ---
+                    detections = vt.get("malicious", 0) + vt.get("suspicious", 0)
+                    total_scanned = vt.get("total_scanned", 0)
+                    
+                    result['vt_detections'] = detections
+                    result['vt_engines'] = total_scanned
+                    result['vt_verdict'] = "MALICIOUS" if detections > 0 else "SAFE"
             
             # 4. Verdict
             result['overall_verdict'] = get_final_verdict(result['heuristic_verdict'], result['vt_verdict'])

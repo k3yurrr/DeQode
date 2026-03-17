@@ -692,12 +692,25 @@
                 resultCard.className = `result-card ${verdict.toLowerCase()}`;
 
                 const flags = result.heuristic_flags || [];
-                const flagsHtml = flags.length > 0
-                    ? `<div class="flags-list">
-                        <div class="flags-label">⚠️ Detected Issues:</div>
-                        ${flags.map(flag => `<span class="flag-item">${escapeHtml(flag)}</span>`).join('')}
-                      </div>`
-                    : '';
+                
+                // --- NEW DYNAMIC BADGE LOGIC ---
+                let flagsHtml = '';
+                if (flags.length > 0) {
+                    if (verdict === 'SAFE') {
+                        // Safe info styling (Green)
+                        flagsHtml = `<div class="flags-list">
+                            <div class="flags-label" style="color: #10b981;">ℹ️ Payload Information:</div>
+                            ${flags.map(flag => `<span class="flag-item" style="background: #10b981; color: #050505; font-weight: 600;">${escapeHtml(flag)}</span>`).join('')}
+                          </div>`;
+                    } else {
+                        // Threat warning styling (Red)
+                        flagsHtml = `<div class="flags-list">
+                            <div class="flags-label">⚠️ Detected Issues:</div>
+                            ${flags.map(flag => `<span class="flag-item">${escapeHtml(flag)}</span>`).join('')}
+                          </div>`;
+                    }
+                }
+                // -------------------------------
 
                 const vtInfo = result.vt_verdict !== 'UNKNOWN'
                     ? `<div class="detail-item">

@@ -1,5 +1,5 @@
 import re
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 
 # High-risk TLDs commonly used in phishing
 SUSPICIOUS_TLDS = {
@@ -32,7 +32,42 @@ def analyze_url(url):
         "flags": []
     }
 
-    if not url or not url.startswith(("http://", "https://")):
+    if not url:
+        result["flags"].append("Empty URL provided.")
+        result["risk_score"] = 10
+        result["verdict"] = "SUSPICIOUS"
+        return result
+
+    url_lower = url.lower()
+
+    # ── PROTOCOL AWARENESS: Handle Non-Web Payloads safely ──────────────────
+    
+    if url_lower.startswith("upi://pay"):
+        parsed = urlparse(url)
+        qs = parse_qs(parsed.query)
+        payee = qs.get('pn', ['Unknown Payee'])[0]
+        vpa = qs.get('pa', ['Unknown VPA'])[0]
+        
+        result["verdict"] = "SAFE"
+        result["risk_score"] = 0
+        result["flags"].append(f"Valid UPI Payment Link for: {payee}")
+        result["flags"].append(f"Target VPA: {vpa}")
+        return result
+
+    if url_lower.startswith("wifi:"):
+        result["verdict"] = "SAFE"
+        result["risk_score"] = 0
+        result["flags"].append("Standard WiFi Configuration payload.")
+        return result
+
+    if url_lower.startswith("mailto:"):
+        result["verdict"] = "SAFE"
+        result["risk_score"] = 0
+        result["flags"].append("Standard Email Draft payload.")
+        return result
+
+    # ── Verify it's a web URL before proceeding ─────────────────────────────
+    if not url_lower.startswith(("http://", "https://")):
         result["flags"].append("Not a valid HTTP/HTTPS URL.")
         result["risk_score"] = 10
         result["verdict"] = "SUSPICIOUS"
