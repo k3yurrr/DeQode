@@ -8,7 +8,7 @@ import os
 import json
 import tempfile
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from flask import Flask, render_template, request, jsonify
 from werkzeug.utils import secure_filename
 
@@ -76,11 +76,14 @@ def health():
 
 @app.route('/api/info', methods=['GET'])
 def info():
-    """Get app information including last updated time"""
+    """Get app information including last updated time in IST"""
     try:
         app_file = BASE_DIR / 'app.py'
         last_modified = os.path.getmtime(app_file)
-        last_updated = datetime.fromtimestamp(last_modified).strftime('%Y-%m-%d %H:%M:%S')
+        # Convert to IST (UTC+5:30)
+        ist_tz = timezone(timedelta(hours=5, minutes=30))
+        last_updated_dt = datetime.fromtimestamp(last_modified, tz=ist_tz)
+        last_updated = last_updated_dt.strftime('%Y-%m-%d %H:%M:%S IST')
     except:
         last_updated = 'Unknown'
     
