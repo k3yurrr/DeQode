@@ -6,7 +6,7 @@ on:
       - main
 
 env:
-  IMAGE_NAME: ketan2004/deqode
+  IMAGE_NAME: ketan2004/dequode
 
 jobs:
   build-and-deploy:
