@@ -8,6 +8,7 @@ import os
 import json
 import tempfile
 from pathlib import Path
+from datetime import datetime
 from flask import Flask, render_template, request, jsonify
 from werkzeug.utils import secure_filename
 
@@ -71,6 +72,21 @@ def health():
         'status': 'ok',
         'service': 'DeQode API',
         'vt_key_loaded': bool(VT_API_KEY and len(VT_API_KEY) >= 32)
+    })
+
+@app.route('/api/info', methods=['GET'])
+def info():
+    """Get app information including last updated time"""
+    try:
+        app_file = BASE_DIR / 'app.py'
+        last_modified = os.path.getmtime(app_file)
+        last_updated = datetime.fromtimestamp(last_modified).strftime('%Y-%m-%d %H:%M:%S')
+    except:
+        last_updated = 'Unknown'
+    
+    return jsonify({
+        'version': '1.0',
+        'last_updated': last_updated
     })
 
 @app.route('/api/analyze', methods=['POST'])

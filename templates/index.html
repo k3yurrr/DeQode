@@ -650,6 +650,7 @@
         <!-- Footer -->
         <div class="footer">
             <p>DeQode v1.0 — Protecting you from QR code phishing threats 🛡️</p>
+            <p id="lastUpdated" style="font-size: 0.9em; color: #555555; margin-top: 8px;">Last updated: <span id="updateTime">loading...</span></p>
         </div>
     </div>
 
@@ -970,6 +971,27 @@
             };
             return text.replace(/[&<>"']/g, m => map[m]);
         }
+
+        // Fetch and display last updated time
+        async function loadAppInfo() {
+            try {
+                const response = await fetch('/api/info');
+                const data = await response.json();
+                const updateTimeElement = document.getElementById('updateTime');
+                if (updateTimeElement) {
+                    updateTimeElement.textContent = data.last_updated;
+                }
+            } catch (error) {
+                console.error('Failed to load app info:', error);
+                const updateTimeElement = document.getElementById('updateTime');
+                if (updateTimeElement) {
+                    updateTimeElement.textContent = 'N/A';
+                }
+            }
+        }
+
+        // Load app info on page load
+        document.addEventListener('DOMContentLoaded', loadAppInfo);
     </script>
 </body>
 </html>
