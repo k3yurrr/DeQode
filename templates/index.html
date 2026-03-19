@@ -473,6 +473,122 @@
         .footer a:hover {
             text-decoration: underline;
         }
+
+        /* Camera Button */
+        .camera-button {
+            background: linear-gradient(135deg, #ff6b9d, #c44569);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.9em;
+            margin-top: 10px;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .camera-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(255, 107, 157, 0.3);
+        }
+
+        .camera-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Camera Modal */
+        .camera-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.95);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .camera-modal.active {
+            display: flex;
+        }
+
+        .camera-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            background: #161616;
+            border: 1px solid #333333;
+            border-radius: 12px;
+            padding: 20px;
+            max-width: 500px;
+            width: 90%;
+        }
+
+        #cameraVideo {
+            width: 100%;
+            max-width: 400px;
+            border-radius: 8px;
+            border: 2px solid #33ccff;
+        }
+
+        .camera-controls {
+            display: flex;
+            gap: 10px;
+            width: 100%;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .camera-btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            flex: 1;
+            min-width: 120px;
+        }
+
+        .capture-btn {
+            background: linear-gradient(135deg, #33ccff, #00ff99);
+            color: #050505;
+        }
+
+        .capture-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(51, 204, 255, 0.3);
+        }
+
+        .cancel-btn {
+            background: #555555;
+            color: white;
+        }
+
+        .cancel-btn:hover {
+            background: #666666;
+        }
+
+        #captureCanvas {
+            display: none;
+        }
+
+        .camera-title {
+            color: #33ccff;
+            font-size: 1.3em;
+            font-weight: 600;
+        }
     </style>
 </head>
 <body>
@@ -500,6 +616,9 @@
                     <div class="file-name" id="fileName"></div>
                     <input type="file" id="fileInput" accept="image/*" style="display: none;">
                 </div>
+                <button class="camera-button" id="cameraBtn">
+                    📷 CAPTURE FROM CAMERA
+                </button>
                 <button class="button" id="analyzeBtn">
                     RUN SCAN
                 </button>
@@ -534,6 +653,19 @@
         </div>
     </div>
 
+    <!-- Camera Modal -->
+    <div class="camera-modal" id="cameraModal">
+        <div class="camera-container">
+            <div class="camera-title">📷 CAPTURE QR CODE</div>
+            <video id="cameraVideo" autoplay playsinline></video>
+            <canvas id="captureCanvas"></canvas>
+            <div class="camera-controls">
+                <button class="camera-btn capture-btn" id="captureBtn">CAPTURE</button>
+                <button class="camera-btn cancel-btn" id="closeCameraBtn">CLOSE</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         const uploadArea = document.getElementById('uploadArea');
         const fileInput = document.getElementById('fileInput');
@@ -547,6 +679,13 @@
         const resultsContainer = document.getElementById('resultsContainer');
 
         let selectedFile = null;
+        let cameraStream = null;
+        const cameraModal = document.getElementById('cameraModal');
+        const cameraBtn = document.getElementById('cameraBtn');
+        const cameraVideo = document.getElementById('cameraVideo');
+        const captureBtn = document.getElementById('captureBtn');
+        const closeCameraBtn = document.getElementById('closeCameraBtn');
+        const captureCanvas = document.getElementById('captureCanvas');
 
         // Upload area click - trigger file input
         if (uploadArea) {
@@ -556,6 +695,48 @@
                     inputElement.click();
                 }
             });
+        }
+
+        // Camera button click
+        cameraBtn.addEventListener('click', async () => {
+            try {
+                cameraStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: 'environment' } 
+                });
+                cameraVideo.srcObject = cameraStream;
+                cameraModal.classList.add('active');
+                addLog('[SYSTEM] Camera access granted', 'system');
+            } catch (error) {
+                addLog(`[ERROR] Failed to access camera: ${error.message}`, 'error');
+            }
+        });
+
+        // Capture button click
+        captureBtn.addEventListener('click', () => {
+            const context = captureCanvas.getContext('2d');
+            captureCanvas.width = cameraVideo.videoWidth;
+            captureCanvas.height = cameraVideo.videoHeight;
+            context.drawImage(cameraVideo, 0, 0);
+            
+            captureCanvas.toBlob((blob) => {
+                if (blob) {
+                    const file = new File([blob], 'camera-capture.png', { type: 'image/png' });
+                    handleFileSelect(file);
+                    closeCameraModal();
+                    addLog('[SUCCESS] QR code captured from camera', 'success');
+                }
+            }, 'image/png');
+        });
+
+        // Close camera modal
+        closeCameraBtn.addEventListener('click', closeCameraModal);
+
+        function closeCameraModal() {
+            cameraModal.classList.remove('active');
+            if (cameraStream) {
+                cameraStream.getTracks().forEach(track => track.stop());
+                cameraStream = null;
+            }
         }
 
         // File input change
