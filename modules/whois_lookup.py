@@ -128,17 +128,19 @@ def lookup_whois(url, timeout=5):
     try:
         # ── Perform WHOIS lookup ───────────────────────────────────────────
         # Note: Using a shorter timeout to prevent blocking
-        whois_data = whois.whois(domain, timeout=timeout)
+        try:
+            whois_data = whois.whois(domain, timeout=timeout)
+        except (socket.timeout, TimeoutError):
+            # Timeout - return None to show "No WHOIS Data Available" message
+            logger.debug(f"WHOIS timeout for {domain}")
+            return None
         
         if not whois_data:
-            result["error"] = "No WHOIS data available"
-            result["status"] = "unavailable"
-            return result
+            return None
         
         # ── Extract registrar ──────────────────────────────────────────────
         registrar = whois_data.get("registrar")
         if registrar:
-            # registrar might be a list
             if isinstance(registrar, list):
                 result["registrar"] = registrar[0] if registrar else "Unknown"
             else:
@@ -152,7 +154,7 @@ def lookup_whois(url, timeout=5):
             if isinstance(created, datetime):
                 result["created_date"] = created.strftime("%Y-%m-%d")
             else:
-                result["created_date"] = str(created)[:10]  # Take first 10 chars (YYYY-MM-DD)
+                result["created_date"] = str(created)[:10]
         
         # ── Extract expiration date ────────────────────────────────────────
         expiry = whois_data.get("expiration_date") or whois_data.get("updated_date") or whois_data.get("expires")
@@ -182,28 +184,11 @@ def lookup_whois(url, timeout=5):
         result["status"] = "found"
         return result
     
-    except (TimeoutError, socket.timeout) as e:
-        # Timeout errors
-        result["status"] = "timeout"
-        result["error"] = "WHOIS lookup timed out"
-        logger.debug(f"WHOIS timeout for {domain} after {timeout}s")
-        return result
-    
     except Exception as e:
-        # Catch all other WHOIS errors (WhoisDomainNotFoundError, PywhoisError, etc.)
-        error_str = str(e).lower()
-        
-        # Detect domain not found errors
-        if "no match" in error_str or "not found" in error_str.replace(" ", ""):
-            result["status"] = "not_found"
-            result["error"] = "Domain not found"
-        else:
-            # For any other error, just mark as error and skip display
-            result["status"] = "error"
-            result["error"] = "WHOIS lookup failed"
-        
-        logger.debug(f"WHOIS lookup failed for {domain}: {str(e)[:100]}")
-        return result
+        # Catch ALL exceptions including socket errors, timeouts, parsing errors
+        # and gracefully return None to show "No WHOIS Data Available"
+        logger.debug(f"WHOIS lookup failed for {domain}: {type(e).__name__}: {str(e)[:80]}")
+        return None
 
 
 def format_whois_for_display(whois_result):
@@ -219,17 +204,6 @@ def format_whois_for_display(whois_result):
     """
     if whois_result is None:
         return None
-    
-    # Hide failed lookups from frontend (they'll just clutter the UI)
-    if whois_result.get("status") in ["timeout", "error", "not_found"]:
-        return None
-    
-    if whois_result.get("status") == "unavailable":
-        return {
-            "domain": whois_result.get("domain"),
-            "status": "unavailable",
-            "message": "WHOIS data not available for this domain"
-        }
     
     # Return clean, user-friendly data
     return {
