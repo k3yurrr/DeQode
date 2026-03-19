@@ -171,14 +171,33 @@ def lookup_whois(url, timeout=5):
         if org:
             if isinstance(org, list):
                 org = org[0]
-            result["organization"] = org.strip() if isinstance(org, str) else str(org)
+            org = org.strip() if isinstance(org, str) else str(org)
+            
+            # If organization is privacy-protected, use the domain name instead
+            if "privacy" in org.lower() or "redacted" in org.lower():
+                org = None  # Will use domain name below instead
+            else:
+                result["organization"] = org
+        
+        # If no real organization found, use the domain name
+        if not result["organization"] or result["organization"] == "Unknown":
+            domain_name = domain.upper().replace(".COM", "").replace(".ORG", "").replace(".NET", "")
+            result["organization"] = domain_name
         
         # ── Extract country ────────────────────────────────────────────────
         country = whois_data.get("country")
         if country:
             if isinstance(country, list):
                 country = country[0]
-            result["country"] = country.strip() if isinstance(country, str) else str(country)
+            country_str = country.strip() if isinstance(country, str) else str(country)
+            
+            # If country is from privacy provider (IS, etc.), don't use it
+            if country_str not in ["IS", "Iceland"]:
+                result["country"] = country_str
+            else:
+                result["country"] = "NA"  # Privacy info doesn't reflect actual country
+        else:
+            result["country"] = "NA"
         
         # ── Status ────────────────────────────────────────────────────────
         result["status"] = "found"
