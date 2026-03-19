@@ -48,7 +48,7 @@ from modules.decoder import decode_qr_from_image
 from modules.network import resolve_url
 from modules.url_inspector import analyze_url
 from modules.reputation import check_virustotal
-
+from modules.whois_lookup import lookup_whois, format_whois_for_display
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
@@ -139,6 +139,12 @@ def analyze():
             result['redirect_detected'] = (final_url != raw_url)
             if net_result.get("error"):
                 result['network_error'] = net_result.get("error")
+            
+            # 1.5. WHOIS Domain Lookup
+            whois_raw = lookup_whois(final_url)
+            whois_data = format_whois_for_display(whois_raw)
+            if whois_data:
+                result['whois'] = whois_data
             
             # 2. Heuristics
             heuristic = analyze_url(final_url)

@@ -416,6 +416,52 @@
             margin-bottom: 6px;
         }
 
+        /* WHOIS Section */
+        .whois-section {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #333333;
+        }
+
+        .whois-title {
+            color: #33ccff;
+            font-size: 1em;
+            font-weight: 600;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .whois-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+        }
+
+        .whois-item {
+            background: #0a0a0a;
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid #2a2a2a;
+        }
+
+        .whois-label {
+            color: #666666;
+            font-size: 0.8em;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+            display: block;
+        }
+
+        .whois-value {
+            color: #e0e0e0;
+            font-weight: 500;
+            font-size: 0.95em;
+            word-break: break-word;
+        }
+
         /* Status Messages */
         .status-message {
             padding: 15px;
@@ -649,7 +695,7 @@
 
         <!-- Footer -->
         <div class="footer">
-            <p>DeQode v1.0 — Protecting you from QR code phishing threats 🛡️</p>
+            <p>DeQode v1.0: Protecting you from QR code phishing threats 🛡️</p>
             <p id="lastUpdated" style="font-size: 0.9em; color: #555555; margin-top: 8px;">Last updated: <span id="updateTime">loading...</span></p>
         </div>
     </div>
@@ -873,6 +919,10 @@
                 const resultCard = document.createElement('div');
                 resultCard.className = `result-card ${verdict.toLowerCase()}`;
 
+                // DEBUG: Log WHOIS data
+                console.log(`Result ${index + 1}:`, result);
+                console.log(`WHOIS data present:`, !!result.whois, result.whois);
+
                 const flags = result.heuristic_flags || [];
                 
                 // --- NEW DYNAMIC BADGE LOGIC ---
@@ -925,6 +975,50 @@
                             <div class="url-value">${escapeHtml(result.final_url)}</div>
                         </div>
                     ` : ''}
+
+                    ${result.whois && typeof result.whois === 'object' ? `
+                        <div class="whois-section">
+                            <div class="whois-title">🌐 Domain WHOIS Information</div>
+                            <div class="whois-grid">
+                                ${result.whois.registrar && result.whois.registrar !== 'Unknown' ? `
+                                    <div class="whois-item">
+                                        <span class="whois-label">Registrar</span>
+                                        <span class="whois-value">${escapeHtml(String(result.whois.registrar))}</span>
+                                    </div>
+                                ` : ''}
+                                ${result.whois.created_date && result.whois.created_date !== 'Unknown' ? `
+                                    <div class="whois-item">
+                                        <span class="whois-label">Created Date</span>
+                                        <span class="whois-value">${escapeHtml(String(result.whois.created_date))}</span>
+                                    </div>
+                                ` : ''}
+                                ${result.whois.expiration_date && result.whois.expiration_date !== 'Unknown' ? `
+                                    <div class="whois-item">
+                                        <span class="whois-label">Expires</span>
+                                        <span class="whois-value">${escapeHtml(String(result.whois.expiration_date))}</span>
+                                    </div>
+                                ` : ''}
+                                ${result.whois.organization && result.whois.organization !== 'Unknown' ? `
+                                    <div class="whois-item">
+                                        <span class="whois-label">Organization</span>
+                                        <span class="whois-value">${escapeHtml(String(result.whois.organization))}</span>
+                                    </div>
+                                ` : ''}
+                                ${result.whois.country && result.whois.country !== 'Unknown' ? `
+                                    <div class="whois-item">
+                                        <span class="whois-label">Country</span>
+                                        <span class="whois-value">${escapeHtml(String(result.whois.country))}</span>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                    ` : `
+                        <div style="margin-top: 15px; padding: 12px; background: rgba(59, 130, 246, 0.1); 
+                                    border-left: 3px solid #3b82f6; border-radius: 4px; color: #93c5fd;">
+                            ℹ️ <strong>No WHOIS Data Available</strong><br>
+                            <span style="font-size: 0.9em;">This URL is either a non-web protocol (like UPI/WiFi), a URL shortener, or an IP address. WHOIS lookup is only available for standard web domain names.</span>
+                        </div>
+                    `}
 
                     <div class="result-details">
                         <div class="detail-item">

@@ -21,6 +21,7 @@ from modules.decoder       import decode_qr_from_image
 from modules.network       import resolve_url
 from modules.url_inspector import analyze_url
 from modules.reputation    import check_virustotal
+from modules.ssl_checker   import check_ssl_certificate
 
 
 def get_final_verdict(heuristic_verdict, vt_verdict):
@@ -87,6 +88,22 @@ def main():
             print(f"  Status Code       : {status_code}")
             if final_url != raw_url:
                 print("  [!] Redirection detected — shortened URL unmasked.")
+
+        # ── Step 1.5: SSL/TLS Certificate Check ─────────────────────────────
+        print("\n[*] Checking SSL/TLS Authentication...")
+        ssl_result = check_ssl_certificate(final_url)
+        ssl_verdict = ssl_result.get("verdict", "UNKNOWN")
+        
+        if ssl_verdict == "SECURE":
+            print(f"  > [✓] SECURE: Valid SSL certificate from trusted CA")
+        elif ssl_verdict == "UNENCRYPTED":
+            print(f"  > [⚠️ ] WARNING: HTTP (unencrypted) connection")
+        elif ssl_verdict == "SAFE_PROTOCOL":
+            print(f"  > [ℹ️ ] Non-web protocol (no SSL needed)")
+        else:
+            print(f"  > [⚠️ ] {ssl_verdict}: Invalid or untrusted certificate")
+            for flag in ssl_result.get("flags", []):
+                print(f"       {flag}")
 
         # ── Step 2: Heuristic analysis on RESOLVED URL ─────────────────────
         print("\n[*] Running Local Heuristic Scan...")
